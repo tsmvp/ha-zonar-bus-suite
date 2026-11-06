@@ -1,8 +1,11 @@
 # Zonar Bus Suite (Home Assistant)
 
 Track your child's school bus from the Zonar Bus Suite Parent app in Home
-Assistant. Creates a `device_tracker` per bus run that shows live GPS while the
-driver has the route active, and goes unavailable otherwise.
+Assistant. Creates a single `device_tracker.school_bus` that follows whichever
+run is currently active (morning or afternoon), plus a `sensor.school_bus_status`
+tile. The tracker shows live GPS while the driver has a route active and goes
+unavailable otherwise; the status sensor stays visible and reads
+`Not running` / `En route (AM)` / `En route (PM)`.
 
 ## Install
 
@@ -11,9 +14,10 @@ driver has the route active, and goes unavailable otherwise.
 3. Settings -> Devices & Services -> Add Integration -> "Zonar Bus Suite".
 4. Sign in with the same email/phone and password you use in the app.
 
-A tracker is created for each run your children ride (e.g. "Route 5 PM WK1
-Nepean/Alta Vista"). Attributes include `asset_name`, `route_type`, `heading`,
-`route_xid`, and each `stop` (name, scheduled time, pickup/drop-off, coords).
+You get two entities: `device_tracker.school_bus` (the live GPS marker for the
+active run) and `sensor.school_bus_status`. Tracker attributes include
+`route`, `route_type` (AM/PM), `heading`, `asset_name`, and the child's
+`stop_name` / `scheduled_time` / `stop_latitude` / `stop_longitude`.
 
 ## How it works
 
@@ -35,14 +39,15 @@ automation:
   - alias: Bus approaching stop
     trigger:
       - trigger: state
-        entity_id: device_tracker.route_5_pm_wk1_nepean_alta_vista   # your entity
+        entity_id: device_tracker.school_bus
     condition:
       - condition: template
         value_template: >
-          {% set s = state_attr(trigger.entity_id, 'stops') %}
-          {{ state_attr(trigger.entity_id, 'latitude') is not none and s
-             and distance(states(trigger.entity_id),
-                          s[0].latitude, s[0].longitude) < 0.5 }}
+          {{ state_attr('device_tracker.school_bus', 'latitude') is not none and
+             state_attr('device_tracker.school_bus', 'stop_latitude') is not none and
+             distance('device_tracker.school_bus',
+                      state_attr('device_tracker.school_bus', 'stop_latitude'),
+                      state_attr('device_tracker.school_bus', 'stop_longitude')) < 0.5 }}
     action:
       - action: notify.family
         data:

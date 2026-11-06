@@ -10,7 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import ZonarApi
 from .coordinator import ZonarCoordinator
 
-PLATFORMS = [Platform.DEVICE_TRACKER]
+PLATFORMS = [Platform.DEVICE_TRACKER, Platform.SENSOR]
 
 type ZonarConfigEntry = ConfigEntry[ZonarCoordinator]
 

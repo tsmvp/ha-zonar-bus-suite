@@ -22,6 +22,18 @@ def route_master_type_xids(students: dict | None) -> list[str]:
     return sorted({s["routeMasterTypeXId"] for s in stops if s.get("routeMasterTypeXId")})
 
 
+def active_bus(data: dict | None) -> dict | None:
+    """The currently-active run's bus, or None when nothing is running."""
+    buses = (data or {}).get("buses") or []
+    return buses[0] if buses else None
+
+
+def run_stops(data: dict | None, rmtx: str | None) -> list[dict]:
+    """The child's stops for a given run (routeMasterTypeXId)."""
+    stops = ((data or {}).get("students") or {}).get("studentStops") or []
+    return [s for s in stops if rmtx and str(s.get("routeMasterTypeXId")) == str(rmtx)]
+
+
 class ZonarCoordinator(DataUpdateCoordinator):
     """Caches the student/run mapping; polls each run's live bus position."""
 
