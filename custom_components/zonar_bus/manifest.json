@@ -1,0 +1,12 @@
+{
+  "domain": "zonar_bus",
+  "name": "Zonar Bus Suite",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/tsmvp/ha-zonar-bus-suite",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/tsmvp/ha-zonar-bus-suite/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

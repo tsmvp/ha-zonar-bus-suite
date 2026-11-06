@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Zonar Bus Suite",
+        "description": "Sign in with the same email/phone and password you use in the Zonar Bus Suite Parent app.",
+        "data": {
+          "username": "Email or phone",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email/phone or password.",
+      "cannot_connect": "Could not reach the Zonar service."
+    },
+    "abort": {
+      "already_configured": "This account is already set up."
+    }
+  }
+}
