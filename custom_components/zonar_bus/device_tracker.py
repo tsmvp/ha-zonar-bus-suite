@@ -1,8 +1,8 @@
 """Bus location trackers for Zonar Bus Suite.
 
-One device_tracker per bus (assetName) the guardian's children ride. It carries
-a GPS position while the driver has a route active, and goes unavailable
-otherwise - matching how the app only shows the bus during an active run.
+One device_tracker per run (routeMasterTypeXid) the guardian's children ride.
+It carries a GPS position while the driver has that route active, and goes
+unavailable otherwise - matching how the app only shows the bus during a run.
 """
 
 from __future__ import annotations
@@ -21,8 +21,18 @@ def _student_stops(data: dict) -> list[dict]:
     return (data.get("students") or {}).get("studentStops") or []
 
 
-def _bus_names(data: dict) -> list[str]:
-    return sorted({s["assetName"] for s in _student_stops(data) if s.get("assetName")})
+def _runs(data: dict) -> dict[str, dict]:
+    """Map each run (routeMasterTypeXId) to display info from studentStops."""
+    runs: dict[str, dict] = {}
+    for stop in _student_stops(data):
+        rmtx = stop.get("routeMasterTypeXId")
+        if rmtx and rmtx not in runs:
+            runs[rmtx] = {
+                "route": stop.get("route"),
+                "routeType": stop.get("routeType"),
+                "assetName": stop.get("assetName"),
+            }
+    return runs
 
 
 async def async_setup_entry(
@@ -30,7 +40,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     async_add_entities(
-        ZonarBusTracker(coordinator, name) for name in _bus_names(coordinator.data)
+        ZonarBusTracker(coordinator, rmtx, info) for rmtx, info in _runs(coordinator.data).items()
     )
 
 
@@ -38,22 +48,24 @@ class ZonarBusTracker(CoordinatorEntity[ZonarCoordinator], TrackerEntity):
     _attr_has_entity_name = True
     _attr_icon = "mdi:bus-school"
 
-    def __init__(self, coordinator: ZonarCoordinator, asset_name: str) -> None:
+    def __init__(self, coordinator: ZonarCoordinator, rmtx: str, info: dict) -> None:
         super().__init__(coordinator)
-        self._asset = asset_name
-        self._attr_unique_id = f"{DOMAIN}_{asset_name}"
-        self._attr_name = f"Bus {asset_name}"
+        self._rmtx = rmtx
+        self._info = info
+        self._attr_unique_id = f"{DOMAIN}_{rmtx}"
+        self._attr_name = info.get("route") or f"Bus {info.get('assetName') or rmtx}"
 
     @property
-    def _entry(self) -> dict | None:
+    def _bus(self) -> dict | None:
+        # Live objects key the run as "routeMasterTypeXid" (lower-case id).
         for bus in self.coordinator.data.get("buses") or []:
-            if str(bus.get("assetName")) == str(self._asset):
+            if str(bus.get("routeMasterTypeXid")) == str(self._rmtx):
                 return bus
         return None
 
     @property
     def available(self) -> bool:
-        return super().available and self._entry is not None
+        return super().available and self._bus is not None
 
     @property
     def source_type(self) -> SourceType:
@@ -61,33 +73,35 @@ class ZonarBusTracker(CoordinatorEntity[ZonarCoordinator], TrackerEntity):
 
     @property
     def latitude(self) -> float | None:
-        entry = self._entry
-        value = entry.get("latitude") if entry else None
-        return float(value) if value is not None else None
+        bus = self._bus
+        loc = bus.get("location") if bus else None
+        return float(loc["x"]) if loc and loc.get("x") is not None else None
 
     @property
     def longitude(self) -> float | None:
-        entry = self._entry
-        value = entry.get("longitude") if entry else None
-        return float(value) if value is not None else None
+        bus = self._bus
+        loc = bus.get("location") if bus else None
+        return float(loc["y"]) if loc and loc.get("y") is not None else None
 
     @property
     def extra_state_attributes(self) -> dict:
-        entry = self._entry or {}
-        stops = [s for s in _student_stops(self.coordinator.data)
-                 if str(s.get("assetName")) == str(self._asset)]
+        bus = self._bus or {}
+        stops = [
+            s for s in _student_stops(self.coordinator.data)
+            if str(s.get("routeMasterTypeXId")) == str(self._rmtx)
+        ]
         return {
-            "asset_name": self._asset,
-            "heading": entry.get("heading"),
-            "bearing": entry.get("bearing"),
-            "direction": entry.get("direction"),
-            "routes": sorted({s["route"] for s in stops if s.get("route")}),
-            "runs": sorted({s["run"] for s in stops if s.get("run")}),
+            "asset_name": bus.get("assetName") or self._info.get("assetName"),
+            "route": bus.get("route") or self._info.get("route"),
+            "route_type": bus.get("routeType") or self._info.get("routeType"),
+            "heading": bus.get("heading"),
+            "route_xid": bus.get("routeXid"),
             "stops": [
                 {
                     "name": s.get("stopName"),
                     "scheduled_time": s.get("scheduledTime"),
                     "type": s.get("routeStopType"),
+                    "pickup_or_dropoff": s.get("pickupOrDropOff"),
                     "latitude": s.get("latitude"),
                     "longitude": s.get("longitude"),
                 }

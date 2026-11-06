@@ -5,10 +5,13 @@ Protocol (reverse-engineered from the Flutter parent app):
             -> {data: {accessToken, refreshToken, expiresIn ~120d}}
   * Data:   bussuite-gapi.zonar.com/api, Bearer token.
             - /ga/currentUserInfo  : POST, guardian-level, no org header.
-            - org-scoped endpoints  : need header  organizationXid: <org>
-              (/ga/students is GET; the server returns 401 without the header).
-Responses are wrapped: {statusCode, message, data, errors}; assetLocation
-returns a bare JSON array.
+            - org-scoped endpoints  : need header  organizationXid: <org>.
+            - /ga/students          : GET, lists children + their stops/runs.
+            - /ga/assetLocation/{routeMasterTypeXid} : GET, live bus position for
+              one run. Returns a JSON array (empty until the driver activates the
+              route). Each item: {routeMasterTypeXid, routeXid, location:{x:lat,
+              y:lon}, route, routeType, assetName, heading, ...}.
+Responses are wrapped: {statusCode, message, data, errors}.
 """
 
 from __future__ import annotations
@@ -98,9 +101,9 @@ class ZonarApi:
             await self.current_user()
         return await self._request("GET", "/ga/students", org=True)
 
-    async def asset_locations(self) -> list:
-        """Live positions of all currently-active buses for the account."""
+    async def asset_location(self, route_master_type_xid: str) -> list:
+        """Live bus position(s) for one run; empty list until the route is active."""
         if not self.org_xid:
             await self.current_user()
-        result = await self._request("GET", "/ga/assetLocation", org=True)
+        result = await self._request("GET", f"/ga/assetLocation/{route_master_type_xid}", org=True)
         return result if isinstance(result, list) else []

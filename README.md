@@ -1,8 +1,8 @@
 # Zonar Bus Suite (Home Assistant)
 
 Track your child's school bus from the Zonar Bus Suite Parent app in Home
-Assistant. Creates a `device_tracker` per bus that shows live GPS while a route
-is active and goes unavailable otherwise.
+Assistant. Creates a `device_tracker` per bus run that shows live GPS while the
+driver has the route active, and goes unavailable otherwise.
 
 ## Install
 
@@ -11,19 +11,22 @@ is active and goes unavailable otherwise.
 3. Settings -> Devices & Services -> Add Integration -> "Zonar Bus Suite".
 4. Sign in with the same email/phone and password you use in the app.
 
-A tracker named `device_tracker.bus_<name>` is created for each bus your
-children ride. Attributes include `heading`, `bearing`, `direction`, the
-`routes`/`runs`, and each `stop` (name, scheduled time, coordinates).
+A tracker is created for each run your children ride (e.g. "Route 5 PM WK1
+Nepean/Alta Vista"). Attributes include `asset_name`, `route_type`, `heading`,
+`route_xid`, and each `stop` (name, scheduled time, pickup/drop-off, coords).
 
 ## How it works
 
 - Logs in to `authapi.bus-suite.com` (120-day token, auto re-login on expiry).
 - Reads your organization and children from `bussuite-gapi.zonar.com`
-  (`currentUserInfo`, `students`).
-- Polls `/ga/assetLocation` every 30s for live bus positions.
+  (`currentUserInfo`, `students`). `students` also lists each child's runs
+  (`routeMasterTypeXid`), buses, and stops.
+- Polls `GET /ga/assetLocation/{routeMasterTypeXid}` every 30s for each run.
+  The response carries the position as `location.x` (latitude) / `location.y`
+  (longitude) plus `heading` and `assetName`.
 
-Buses only report coordinates once the **driver marks the route active** - until
-then the tracker is `unavailable`. That is expected, not a fault.
+Each run only returns a position once the **driver marks the route active** -
+until then the tracker is `unavailable`. That is expected, not a fault.
 
 ## Example automation: notify when the bus is near the stop
 
@@ -32,29 +35,19 @@ automation:
   - alias: Bus approaching stop
     trigger:
       - trigger: state
-        entity_id: device_tracker.bus_123   # your bus entity
+        entity_id: device_tracker.route_5_pm_wk1_nepean_alta_vista   # your entity
     condition:
       - condition: template
         value_template: >
-          {{ state_attr('device_tracker.bus_123','latitude') is not none and
-             distance(states('device_tracker.bus_123'),
-                      state_attr('device_tracker.bus_123','stops')[0].latitude,
-                      state_attr('device_tracker.bus_123','stops')[0].longitude) < 0.5 }}
+          {% set s = state_attr(trigger.entity_id, 'stops') %}
+          {{ state_attr(trigger.entity_id, 'latitude') is not none and s
+             and distance(states(trigger.entity_id),
+                          s[0].latitude, s[0].longitude) < 0.5 }}
     action:
       - action: notify.family
         data:
           message: "The school bus is less than 500 m from the stop."
 ```
-
-## Verify / one tweak that may be needed
-
-The tracker matches a live bus to your child by the `assetName` field in the
-`/ga/assetLocation` response. That field list was read from the app
-(`latitude, longitude, heading, bearing, direction, assetName`) but has not yet
-been seen with a live, active route. When a bus is running, check the tracker's
-attributes; if `latitude`/`longitude` stay empty while the app shows the bus,
-the live object uses different key names and `device_tracker.py` needs those key
-names updated (one small edit in the `_entry`/`latitude`/`longitude` properties).
 
 ## Disclaimer
 
