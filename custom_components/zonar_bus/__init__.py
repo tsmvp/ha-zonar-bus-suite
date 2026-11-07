@@ -18,7 +18,7 @@ type ZonarConfigEntry = ConfigEntry[ZonarCoordinator]
 async def async_setup_entry(hass: HomeAssistant, entry: ZonarConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     api = ZonarApi(session, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
-    coordinator = ZonarCoordinator(hass, api)
+    coordinator = ZonarCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

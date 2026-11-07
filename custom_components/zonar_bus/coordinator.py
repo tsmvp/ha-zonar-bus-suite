@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -37,8 +38,14 @@ def run_stops(data: dict | None, rmtx: str | None) -> list[dict]:
 class ZonarCoordinator(DataUpdateCoordinator):
     """Caches the student/run mapping; polls each run's live bus position."""
 
-    def __init__(self, hass: HomeAssistant, api: ZonarApi) -> None:
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: ZonarApi) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=SCAN_INTERVAL,
+            config_entry=entry,
+        )
         self.api = api
         self._students: dict | None = None
         self._students_ts = 0.0
