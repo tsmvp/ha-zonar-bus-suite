@@ -75,8 +75,8 @@ bus, the numbered stops, and the translucent route path:
 
 ```yaml
 type: custom:map-card
-x: -75.70167         # longitude: centre near your stop
-y: 45.34039          # latitude
+x: 45.34039          # latitude (ha-map-card's options table says longitude; the code uses x as latitude)
+y: -75.70167         # longitude
 zoom: 13
 entities:
   - entity: device_tracker.school_bus
