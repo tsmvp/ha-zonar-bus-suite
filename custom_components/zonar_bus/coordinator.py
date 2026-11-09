@@ -10,9 +10,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import ZonarApi, ZonarApiError, ZonarAuthError
 from .const import DOMAIN, SCAN_INTERVAL, STUDENTS_MAX_AGE
+from .schedule import in_run_window
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +54,10 @@ class ZonarCoordinator(DataUpdateCoordinator):
         self._runs: list[str] = []
 
     async def _async_update_data(self) -> dict:
+        # Outside a run window, skip Zonar and report no bus, so the tracker
+        # clears instead of holding the last position until the next run.
+        if not in_run_window(dt_util.now()):
+            return {"buses": [], "students": self._students}
         try:
             now = time.monotonic()
             if self._students is None or now - self._students_ts > STUDENTS_MAX_AGE:
