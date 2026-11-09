@@ -66,8 +66,7 @@ class ZonarRouteSensor(CoordinatorEntity[ZonarCoordinator], SensorEntity):
     """Carries the active route's path as a GeoJSON LineString for the map.
 
     Draw it with the HACS ha-map-card: add this entity with
-    `display: geojson`, `geojson: {attribute: route_geojson, opacity: 0.4,
-    hide_marker: true}`.
+    `geojson: {attribute: route_geojson, opacity: 0.4, hide_marker: true}`.
     """
 
     _attr_name = "School bus route"
