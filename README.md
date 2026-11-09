@@ -14,10 +14,33 @@ unavailable otherwise; the status sensor stays visible and reads
 3. Settings -> Devices & Services -> Add Integration -> "Zonar Bus Suite".
 4. Sign in with the same email/phone and password you use in the app.
 
-You get two entities: `device_tracker.school_bus` (the live GPS marker for the
-active run) and `sensor.school_bus_status`. Tracker attributes include
-`route`, `route_type` (AM/PM), `heading`, `asset_name`, and the child's
+You get two always-present entities: `device_tracker.school_bus` (the live GPS
+marker for the active run) and `sensor.school_bus_status`. Tracker attributes
+include `route`, `route_type` (AM/PM), `heading`, `asset_name`, and the child's
 `stop_name` / `scheduled_time` / `stop_latitude` / `stop_longitude`.
+
+## Stops on the map
+
+While a run is active, each stop on that route is added as its own numbered
+`device_tracker` (`Bus stop 1 …`, `Bus stop 2 …`, with a `mdi:numeric-N-circle`
+icon), so the Map card shows the stops around the moving bus. Your own child's
+stop is drawn distinctly (a boxed number, `is_my_stop: true`). Stops appear only
+for the active route and go unavailable between runs, same as the bus.
+
+A simple Map card that shows the bus and its stops together:
+
+```yaml
+type: map
+entities:
+  - device_tracker.school_bus
+# stop markers share the `zonar_bus` naming; add them as they appear, or use
+# an auto-entities card filtered to `device_tracker.bus_stop_*`.
+hours_to_show: 0
+```
+
+The numbered-circle icons render most reliably with the HACS
+[ha-map-card](https://github.com/nathan-gs/ha-map-card) (`custom:map-card`),
+which also draws the translucent **route line** (see below).
 
 ## How it works
 
@@ -32,8 +55,20 @@ active run) and `sensor.school_bus_status`. Tracker attributes include
   The response carries the position as `location.x` (latitude) / `location.y`
   (longitude) plus `heading` and `assetName`.
 
+- For the active run it fetches the route's ordered stops once
+  (`GET /ga/routePlan/stops/{routeXid}`, cached) and exposes each as a numbered
+  marker, matching your child's stop by `routeStopXid`.
+
 Each run only returns a position once the **driver marks the route active** -
 until then the tracker is `unavailable`. That is expected, not a fault.
+
+## Route line (coming next)
+
+The road path for a route is available at `GET /ga/routePlan/waypoints/{routeXid}`.
+The stock Map card can't draw a line, so this will be exposed as a GeoJSON
+`LineString` attribute and drawn translucent with ha-map-card's
+`display: geojson` (`opacity: 0.4`). It needs one detail still — the exact JSON
+keys of a waypoint point — captured by `scripts/probe_waypoints.py`.
 
 ## Example automation: notify when the bus is near the stop
 

@@ -107,3 +107,21 @@ class ZonarApi:
             await self.current_user()
         result = await self._request("GET", f"/ga/assetLocation/{route_master_type_xid}", org=True)
         return result if isinstance(result, list) else []
+
+    async def route_stops(self, route_xid: str) -> list:
+        """Ordered stops for a route (static route-plan config, keyed by routeXid).
+
+        Each item: {routeStopXid, stopNumber, pathOrder, stopName, scheduledTime,
+        showOnMap, stopLocationG: {lat, lng}, ...}.
+        """
+        if not self.org_xid:
+            await self.current_user()
+        result = await self._request("GET", f"/ga/routePlan/stops/{route_xid}", org=True)
+        return result if isinstance(result, list) else []
+
+    async def route_waypoints(self, route_xid: str) -> list:
+        """The drawn road path for a route, as ordered geo points (for the map line)."""
+        if not self.org_xid:
+            await self.current_user()
+        result = await self._request("GET", f"/ga/routePlan/waypoints/{route_xid}", org=True)
+        return result if isinstance(result, list) else []

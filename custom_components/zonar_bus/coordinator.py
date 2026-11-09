@@ -37,6 +37,43 @@ def run_stops(data: dict | None, rmtx: str | None) -> list[dict]:
     return [s for s in stops if rmtx and str(s.get("routeMasterTypeXId")) == str(rmtx)]
 
 
+def my_stop_xids(students: dict | None) -> set[str]:
+    """routeStopXids that belong to the guardian's children."""
+    stops = (students or {}).get("studentStops") or []
+    return {s.get("routeStopXid") for s in stops if s.get("routeStopXid")}
+
+
+def route_xid_for_bus(bus: dict, students: dict | None) -> str | None:
+    """The routeXid for an active bus; falls back to the studentStops mapping."""
+    if bus.get("routeXid"):
+        return bus["routeXid"]
+    rmtx = bus.get("routeMasterTypeXid")
+    for s in (students or {}).get("studentStops") or []:
+        if str(s.get("routeMasterTypeXId")) == str(rmtx):
+            return s.get("routeXid")
+    return None
+
+
+def _stop_marker(raw: dict, mine: set[str]) -> dict:
+    """Flatten a route-plan stop into the marker fields the entities use."""
+    loc = raw.get("stopLocationG") or {}
+    xid = raw.get("routeStopXid")
+    try:
+        number = int(raw.get("stopNumber") or raw.get("pathOrder") or 0)
+    except (TypeError, ValueError):
+        number = 0
+    return {
+        "routeStopXid": xid,
+        "number": number,
+        "name": raw.get("stopName"),
+        "address": raw.get("stopAddress"),
+        "scheduled_time": raw.get("scheduledTime"),
+        "latitude": loc.get("lat"),
+        "longitude": loc.get("lng"),
+        "is_my_stop": xid in mine,
+    }
+
+
 class ZonarCoordinator(DataUpdateCoordinator):
     """Caches the student/run mapping; polls each run's live bus position."""
 
@@ -52,12 +89,13 @@ class ZonarCoordinator(DataUpdateCoordinator):
         self._students: dict | None = None
         self._students_ts = 0.0
         self._runs: list[str] = []
+        self._stops_cache: dict[str, list] = {}  # routeXid -> route-plan stops (static)
 
     async def _async_update_data(self) -> dict:
         # Outside a run window, skip Zonar and report no bus, so the tracker
         # clears instead of holding the last position until the next run.
         if not in_run_window(dt_util.now()):
-            return {"buses": [], "students": self._students}
+            return {"buses": [], "students": self._students, "stops": []}
         try:
             now = time.monotonic()
             if self._students is None or now - self._students_ts > STUDENTS_MAX_AGE:
@@ -68,9 +106,25 @@ class ZonarCoordinator(DataUpdateCoordinator):
             results = await asyncio.gather(
                 *(self.api.asset_location(rmtx) for rmtx in self._runs)
             )
+            buses = [bus for run in results for bus in run]
+            stops = await self._active_route_stops(buses[0]) if buses else []
         except ZonarAuthError as err:
             raise ConfigEntryAuthFailed("Zonar login failed") from err
         except (ZonarApiError, Exception) as err:  # noqa: BLE001
             raise UpdateFailed(str(err)) from err
-        buses = [bus for run in results for bus in run]
-        return {"buses": buses, "students": self._students}
+        return {"buses": buses, "students": self._students, "stops": stops}
+
+    async def _active_route_stops(self, bus: dict) -> list[dict]:
+        """Numbered stop markers for the active run's route (cached per routeXid)."""
+        route_xid = route_xid_for_bus(bus, self._students)
+        if not route_xid:
+            return []
+        if route_xid not in self._stops_cache:
+            self._stops_cache[route_xid] = await self.api.route_stops(route_xid)
+        mine = my_stop_xids(self._students)
+        return [
+            _stop_marker(s, mine)
+            for s in self._stops_cache[route_xid]
+            if s.get("showOnMap", True)
+            and (s.get("stopLocationG") or {}).get("lat") is not None
+        ]
