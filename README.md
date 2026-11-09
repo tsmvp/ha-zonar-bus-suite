@@ -75,13 +75,12 @@ bus, the numbered stops, and the translucent route path:
 
 ```yaml
 type: custom:map-card
-x: 45.34039          # centre near your stop
-y: -75.70167
+x: -75.70167         # longitude: centre near your stop
+y: 45.34039          # latitude
 zoom: 13
 entities:
   - entity: device_tracker.school_bus
   - entity: sensor.school_bus_route
-    display: geojson
     geojson:
       attribute: route_geojson
       color: "#2196F3"
