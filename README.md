@@ -25,7 +25,10 @@ active run) and `sensor.school_bus_status`. Tracker attributes include
 - Reads your organization and children from `bussuite-gapi.zonar.com`
   (`currentUserInfo`, `students`). `students` also lists each child's runs
   (`routeMasterTypeXid`), buses, and stops.
-- Polls `GET /ga/assetLocation/{routeMasterTypeXid}` every 30s for each run.
+- Polls `GET /ga/assetLocation/{routeMasterTypeXid}` every 15s for each run,
+  but only inside the run windows in `schedule.py` (weekdays 06:30-08:45,
+  Wednesday until 09:45, and 15:15-18:30, local time). Outside them Zonar is
+  not called and the bus reads `Not running`, so the map starts clean each run.
   The response carries the position as `location.x` (latitude) / `location.y`
   (longitude) plus `heading` and `assetName`.
 
