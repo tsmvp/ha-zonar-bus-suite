@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import ZonarApi, ZonarApiError, ZonarAuthError
-from .const import DOMAIN, SCAN_INTERVAL, STUDENTS_MAX_AGE
+from .const import DOMAIN, MAX_ROUTE_POINTS, SCAN_INTERVAL, STUDENTS_MAX_AGE
 from .schedule import in_run_window
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +54,35 @@ def route_xid_for_bus(bus: dict, students: dict | None) -> str | None:
     return None
 
 
+def _downsample(items: list, max_points: int) -> list:
+    """Keep at most max_points, evenly spaced, always including the last."""
+    if len(items) <= max_points:
+        return items
+    step = (len(items) + max_points - 1) // max_points
+    out = items[::step]
+    if out[-1] != items[-1]:
+        out.append(items[-1])
+    return out
+
+
+def route_line_geojson(points: list | None) -> dict | None:
+    """A GeoJSON LineString Feature for a route's waypoints (lng, lat order)."""
+    ordered = sorted(points or [], key=lambda p: p.get("sequenceNumber", 0))
+    coords = []
+    for p in ordered:
+        g = p.get("wayPointG") or {}
+        lat, lng = g.get("lat"), g.get("lng")
+        if lat is not None and lng is not None:
+            coords.append([round(lng, 5), round(lat, 5)])
+    if len(coords) < 2:
+        return None
+    return {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {"type": "LineString", "coordinates": _downsample(coords, MAX_ROUTE_POINTS)},
+    }
+
+
 def _stop_marker(raw: dict, mine: set[str]) -> dict:
     """Flatten a route-plan stop into the marker fields the entities use."""
     loc = raw.get("stopLocationG") or {}
@@ -90,12 +119,13 @@ class ZonarCoordinator(DataUpdateCoordinator):
         self._students_ts = 0.0
         self._runs: list[str] = []
         self._stops_cache: dict[str, list] = {}  # routeXid -> route-plan stops (static)
+        self._waypoints_cache: dict[str, list] = {}  # routeXid -> route path points (static)
 
     async def _async_update_data(self) -> dict:
         # Outside a run window, skip Zonar and report no bus, so the tracker
         # clears instead of holding the last position until the next run.
         if not in_run_window(dt_util.now()):
-            return {"buses": [], "students": self._students, "stops": []}
+            return self._idle()
         try:
             now = time.monotonic()
             if self._students is None or now - self._students_ts > STUDENTS_MAX_AGE:
@@ -107,16 +137,34 @@ class ZonarCoordinator(DataUpdateCoordinator):
                 *(self.api.asset_location(rmtx) for rmtx in self._runs)
             )
             buses = [bus for run in results for bus in run]
-            stops = await self._active_route_stops(buses[0]) if buses else []
+            if not buses:
+                return self._idle()
+            route_xid = route_xid_for_bus(buses[0], self._students)
+            stops = await self._stops_for(route_xid)
+            route_geojson = await self._geojson_for(route_xid)
         except ZonarAuthError as err:
             raise ConfigEntryAuthFailed("Zonar login failed") from err
         except (ZonarApiError, Exception) as err:  # noqa: BLE001
             raise UpdateFailed(str(err)) from err
-        return {"buses": buses, "students": self._students, "stops": stops}
+        return {
+            "buses": buses,
+            "students": self._students,
+            "stops": stops,
+            "route_geojson": route_geojson,
+            "route_name": buses[0].get("route"),
+        }
 
-    async def _active_route_stops(self, bus: dict) -> list[dict]:
+    def _idle(self) -> dict:
+        return {
+            "buses": [],
+            "students": self._students,
+            "stops": [],
+            "route_geojson": None,
+            "route_name": None,
+        }
+
+    async def _stops_for(self, route_xid: str | None) -> list[dict]:
         """Numbered stop markers for the active run's route (cached per routeXid)."""
-        route_xid = route_xid_for_bus(bus, self._students)
         if not route_xid:
             return []
         if route_xid not in self._stops_cache:
@@ -128,3 +176,11 @@ class ZonarCoordinator(DataUpdateCoordinator):
             if s.get("showOnMap", True)
             and (s.get("stopLocationG") or {}).get("lat") is not None
         ]
+
+    async def _geojson_for(self, route_xid: str | None) -> dict | None:
+        """The route path as a GeoJSON LineString (cached per routeXid)."""
+        if not route_xid:
+            return None
+        if route_xid not in self._waypoints_cache:
+            self._waypoints_cache[route_xid] = await self.api.route_waypoints(route_xid)
+        return route_line_geojson(self._waypoints_cache[route_xid])

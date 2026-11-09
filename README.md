@@ -62,13 +62,35 @@ which also draws the translucent **route line** (see below).
 Each run only returns a position once the **driver marks the route active** -
 until then the tracker is `unavailable`. That is expected, not a fault.
 
-## Route line (coming next)
+## Route line
 
-The road path for a route is available at `GET /ga/routePlan/waypoints/{routeXid}`.
-The stock Map card can't draw a line, so this will be exposed as a GeoJSON
-`LineString` attribute and drawn translucent with ha-map-card's
-`display: geojson` (`opacity: 0.4`). It needs one detail still — the exact JSON
-keys of a waypoint point — captured by `scripts/probe_waypoints.py`.
+`sensor.school_bus_route` carries the active route's road path as a GeoJSON
+`LineString` in its `route_geojson` attribute (built from
+`GET /ga/routePlan/waypoints/{routeXid}`, downsampled to ~500 points so the
+attribute stays small). Its state is the route name, or `Idle` between runs.
+
+The stock Map card cannot draw a line, so use the HACS
+[ha-map-card](https://github.com/nathan-gs/ha-map-card). One card then shows the
+bus, the numbered stops, and the translucent route path:
+
+```yaml
+type: custom:map-card
+x: 45.34039          # centre near your stop
+y: -75.70167
+zoom: 13
+entities:
+  - entity: device_tracker.school_bus
+  - entity: sensor.school_bus_route
+    display: geojson
+    geojson:
+      attribute: route_geojson
+      color: "#2196F3"
+      weight: 4
+      opacity: 0.4       # translucent route line
+      hide_marker: true
+  # numbered stops appear as device_tracker.bus_stop_* while a run is active;
+  # list them here, or use an auto-entities card to include them automatically.
+```
 
 ## Example automation: notify when the bus is near the stop
 
